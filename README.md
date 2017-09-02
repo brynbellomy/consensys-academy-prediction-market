@@ -1,5 +1,7 @@
 # consensys academy: prediction market project
 
+![screenshot](https://d3vv6lp55qjaqc.cloudfront.net/items/1E2W2y1v140a2e1H0Q3i/Image%202017-09-02%20at%202.49.44%20PM.png?X-CloudApp-Visitor-Id=1055401)
+
 ## how to run
 
 1) Install dependencies:

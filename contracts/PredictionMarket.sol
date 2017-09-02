@@ -37,8 +37,6 @@ contract PredictionMarket
     mapping(bytes32 => Question) public questionsByID;
     bytes32[] public questionIDs;
 
-    uint constant DECIMALS = 18;
-
     event LogAddAdmin(address whoAdded, address newAdmin);
     event LogAddQuestion(address whoAdded, bytes32 questionID, string question, uint betDeadlineBlock, uint voteDeadlineBlock);
     event LogAddTrustedSource(address whoAdded, address trustedSource);

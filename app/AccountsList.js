@@ -11,7 +11,7 @@ class AccountsList extends React.Component
 
     render() {
         return (
-            <div className="component-AccountsList">
+            <div>
                 <h3>Accounts</h3>
 
                 <div>Current account: {this.props.currentAccount}</div>
@@ -22,8 +22,9 @@ class AccountsList extends React.Component
 
                 <ul>
                     {this.props.accounts.map(account => {
+                        const style = { cursor: 'pointer', fontWeight: this.props.currentAccount == account ? 'bold' : 'normal' }
                         return (
-                            <li className={this.props.currentAccount == account ? 'current' : null} onClick={() => this.onClickAccount(account)} key={account}>
+                            <li style={style} onClick={() => this.onClickAccount(account)} key={account}>
                                 {account}
                                 &nbsp;
                                 {this.props.isAdmin[account] === true ? '(admin)' : null}
