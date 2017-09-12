@@ -43,7 +43,7 @@ class Store extends EventEmitter
 
     async init() {
         const currentBlock = await web3.eth.getBlockNumberPromise()
-        web3.eth.defaultBlock = currentBlock
+        web3.eth.defaultBlock = web3.fromDecimal(currentBlock)
 
         // initialize our app data
         await this.getAccounts()
@@ -182,7 +182,7 @@ class Store extends EventEmitter
     async getIsAdmin(accounts) {
         const predictionMkt = await this.contracts.PredictionMarket.deployed()
 
-        const results = await Promise.all( accounts.map(acct => predictionMkt.isAdmin(acct)) )
+        const results = await Promise.all( accounts.map(acct => predictionMkt.isAdmin(acct, {from: this.state.currentAccount})) )
         _.zip(accounts, results).forEach(tpl => {
             const [ acct, is ] = tpl
             this.state.isAdmin[acct] = is
