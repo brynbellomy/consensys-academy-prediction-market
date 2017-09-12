@@ -2,8 +2,9 @@ pragma solidity ^0.4.15;
 
 import './SafeMath.sol';
 import './Ownable.sol';
+import './Haltable.sol';
 
-contract Question is Ownable
+contract Question is Ownable, Haltable
 {
     using SafeMath for uint;
 
@@ -36,6 +37,13 @@ contract Question is Ownable
         questionStr = _questionStr;
         betDeadlineBlock = _betDeadlineBlock;
         voteDeadlineBlock = _voteDeadlineBlock;
+    }
+
+    function haltSwitch(address _who, bool _isHalted)
+        onlyOwner
+        returns (bool ok)
+    {
+        return _haltSwitch(_who, _isHalted);
     }
 
     function bet(bool yesOrNo)
