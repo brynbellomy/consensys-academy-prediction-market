@@ -133,23 +133,6 @@ contract Question is Ownable
     // frontend convenience getters
     //
 
-    // function getBet(address bettor)
-    //     public
-    //     constant
-    //     returns (Vote theVote, uint amount, bool withdrawn)
-    // {
-    //     Bet storage theBet = bets[bettor];
-    //     return (theBet.vote, theBet.amount, theBet.withdrawn);
-    // }
-
-    // function getVote(address trustedSource)
-    //     public
-    //     constant
-    //     returns (Vote theVote)
-    // {
-    //     return votes[trustedSource];
-    // }
-
     function getMetadata()
         constant
         returns (string _questionStr, uint _betDeadlineBlock, uint _voteDeadlineBlock, uint _yesVotes, uint _noVotes, uint _yesFunds, uint _noFunds)
