@@ -2,8 +2,7 @@
 
 export function questionTupleToObject(tuple) {
     let [
-        exists,
-        question,
+        questionStr,
         betDeadlineBlock,
         voteDeadlineBlock,
         yesVotes,
@@ -13,8 +12,7 @@ export function questionTupleToObject(tuple) {
     ] = tuple
 
     return {
-        exists,
-        question,
+        questionStr,
         betDeadlineBlock,
         voteDeadlineBlock,
         yesVotes,

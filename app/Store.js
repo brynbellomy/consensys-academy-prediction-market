@@ -23,6 +23,8 @@ class Store extends EventEmitter
         this.web3 = web3
         this.contracts = contracts
 
+        this.questionWatchers = {}
+
         // define initial state
         this.state = {
             blockNumber: 0,
@@ -31,7 +33,7 @@ class Store extends EventEmitter
             ethBalances: {},
             isAdmin: {},
             isTrustedSource: {},
-            questionIDs: [],
+            questionAddresses: [],
             questions: {},
             questionBets: {},
             questionVotes: {},
@@ -42,7 +44,7 @@ class Store extends EventEmitter
     }
 
     async init() {
-        const currentBlock = await web3.eth.getBlockNumberPromise()
+        var currentBlock = await web3.eth.getBlockNumberPromise()
         web3.eth.defaultBlock = web3.fromDecimal(currentBlock)
 
         // initialize our app data
@@ -53,9 +55,9 @@ class Store extends EventEmitter
         await this.getETHBalances(this.state.accounts)
 
         await this.getQuestions()
-        for (let questionID of this.state.questionIDs) {
-            await this.getQuestionBets(questionID, this.state.accounts)
-            await this.getQuestionVotes(questionID, this.state.accounts)
+        for (let addr of this.state.questionAddresses) {
+            await this.getQuestionBets(addr, this.state.accounts)
+            await this.getQuestionVotes(addr, this.state.accounts)
         }
 
         web3.eth.defaultBlock = 'latest'
@@ -63,30 +65,6 @@ class Store extends EventEmitter
         setInterval(store.getBlockNumber, 1000)
 
         const predictionMkt = await this.contracts.PredictionMarket.deployed()
-
-        // event LogVote(address trustedSource, bytes32 questionID, Vote vote);
-        predictionMkt.LogVote(null, { fromBlock: currentBlock, toBlock: 'latest' }).watch((err, log) => {
-            console.log('==== LogVote')
-            const { trustedSource, questionID, vote } = log.args
-            // this.state.questionVotes[questionID] = this.state.questionVotes[questionID] || {}
-            // this.state.questionVotes[questionID][trustedSource] = vote
-            this.getQuestions([ questionID ])
-            this.getQuestionVotes(questionID, [ trustedSource ])
-            this.getETHBalances([ trustedSource ])
-            // this.emitState()
-        })
-
-        // event LogBet(address bettor, bytes32 questionID, Vote vote, uint betAmount);
-        predictionMkt.LogBet(null, { fromBlock: currentBlock, toBlock: 'latest' }).watch((err, log) => {
-            console.log('==== LogBet')
-            const { bettor, questionID, vote, betAmount } = log.args
-            // this.state.questionBets[questionID] = this.state.questionBets[questionID] || {}
-            // this.state.questionBets[questionID][bettor] = { vote, amount: betAmount, withdrawn: false }
-            this.getQuestions([ questionID ])
-            this.getQuestionBets(questionID, [ bettor ])
-            this.getETHBalances([ bettor ])
-            // this.emitState()
-        })
 
         // event LogAddTrustedSource(address whoAdded, address trustedSource);
         predictionMkt.LogAddTrustedSource(null, { fromBlock: currentBlock, toBlock: 'latest' }).watch((err, log) => {
@@ -106,14 +84,14 @@ class Store extends EventEmitter
             this.emitState()
         })
 
-        // event LogAddQuestion(address whoAdded, bytes32 questionID, string question, uint betDeadlineBlock, uint voteDeadlineBlock);
+        // event LogAddQuestion(address whoAdded, address questionAddress, string questionStr, uint betDeadlineBlock, uint voteDeadlineBlock);
         predictionMkt.LogAddQuestion(null, { fromBlock: currentBlock, toBlock: 'latest' }).watch((err, log) => {
             console.log('==== LogAddQuestion')
-            const { whoAdded, questionID, question, betDeadlineBlock, voteDeadlineBlock } = log.args
-            this.state.questions[questionID] = {
-                id: questionID,
+            const { whoAdded, questionAddress, questionStr, betDeadlineBlock, voteDeadlineBlock } = log.args
+            this.state.questions[questionAddress] = {
+                address: questionAddress,
                 exists: true,
-                question,
+                questionStr,
                 betDeadlineBlock,
                 voteDeadlineBlock,
                 yesVotes: 0,
@@ -121,21 +99,51 @@ class Store extends EventEmitter
                 yesFunds: 0,
                 noFunds: 0,
             }
-            this.state.questionIDs = _.uniq( [].concat(this.state.questionIDs, questionID) )
+            this.state.questionAddresses = _.uniq( [].concat(this.state.questionAddresses, questionAddress) )
             this.getETHBalances([ whoAdded ])
             this.emitState()
+
+            this.addQuestionWatchers(questionAddress)
+        })
+    }
+
+    async addQuestionWatchers(questionAddr, currentBlock) {
+        if (this.questionWatchers[questionAddr] !== undefined) {
+            return
+        }
+
+        const questionContract = await this.contracts.Question.at(questionAddr)
+
+        // event LogVote(address trustedSource, Vote vote);
+        questionContract.LogVote(null, { fromBlock: 0, toBlock: 'latest' }).watch((err, log) => {
+            console.log('==== LogVote')
+            const { trustedSource, vote } = log.args
+            this.getQuestions([ questionAddr ])
+            this.getQuestionVotes(questionAddr, [ trustedSource ])
+            this.getETHBalances([ trustedSource ])
         })
 
-        // event LogWithdraw(address who, bytes32 questionID, uint amount);
-        predictionMkt.LogWithdraw(null, { fromBlock: currentBlock, toBlock: 'latest' }).watch((err, log) => {
+        // event LogBet(address bettor, Vote vote, uint betAmount);
+        questionContract.LogBet(null, { fromBlock: 0, toBlock: 'latest' }).watch((err, log) => {
+            console.log('==== LogBet')
+            const { bettor, vote, betAmount } = log.args
+            this.getQuestions([ questionAddr ])
+            this.getQuestionBets(questionAddr, [ bettor ])
+            this.getETHBalances([ bettor ])
+        })
+
+        // event LogWithdraw(address who, uint amount);
+        questionContract.LogWithdraw(null, { fromBlock: 0, toBlock: 'latest' }).watch((err, log) => {
             console.log('==== LogWithdraw')
-            const { who, questionID, amount } = log.args
-            this.state.questionBets[questionID] = this.state.questionBets[questionID] || {}
-            this.state.questionBets[questionID][who] = this.state.questionBets[questionID][who] || {}
-            this.state.questionBets[questionID][who].withdrawn = true
+            const { who, amount } = log.args
+            this.state.questionBets[questionAddr] = this.state.questionBets[questionAddr] || {}
+            this.state.questionBets[questionAddr][who] = this.state.questionBets[questionAddr][who] || {}
+            this.state.questionBets[questionAddr][who].withdrawn = true
             this.getETHBalances([ who ])
             this.emitState()
         })
+
+        this.questionWatchers[questionAddr] = true
     }
 
     emitState() {
@@ -152,23 +160,30 @@ class Store extends EventEmitter
         await predictionMkt.addQuestion(question, betDeadlineBlock, voteDeadlineBlock, { from: this.state.currentAccount, gas: 200000 })
     }
 
-    async getQuestions(questionIDs) {
+    async getQuestions(questionAddresses) {
         const predictionMkt = await this.contracts.PredictionMarket.deployed()
 
-        if (questionIDs === null || questionIDs === undefined) {
-            questionIDs = await predictionMkt.getAllQuestionIDs({ from: this.state.currentAccount })
+        if (questionAddresses === null || questionAddresses === undefined) {
+            questionAddresses = await predictionMkt.getAllQuestionAddresses({ from: this.state.currentAccount })
         }
 
-        const questionPromises = questionIDs.map(id => predictionMkt.questionsByID(id, { from: this.state.currentAccount }))
-        const questions = (await Promise.all(questionPromises)).map(data.questionTupleToObject)
-        _.zip(questionIDs, questions).map(pair => {
-            const [ id, question ] = pair
-            return { id, ...question }
-        }).forEach(question => {
-            this.state.questions[question.id] = question
+        const questionPromises = questionAddresses.map(addr => {
+            return this.contracts.Question.at(addr).then(instance => instance.getMetadata({ from: this.state.currentAccount }))
         })
 
-        this.state.questionIDs = _.uniq( [].concat(this.state.questionIDs, questionIDs) )
+        const questions = (await Promise.all(questionPromises)).map(data.questionTupleToObject)
+        _.zip(questionAddresses, questions).map(pair => {
+            const [ address, question ] = pair
+            return { address, ...question }
+        }).forEach(question => {
+            this.state.questions[question.address] = question
+        })
+
+        this.state.questionAddresses = _.uniq( [].concat(this.state.questionAddresses, questionAddresses) )
+
+        for (let addr of questionAddresses) {
+            await this.addQuestionWatchers(addr)
+        }
 
         this.emitState()
     }
@@ -219,25 +234,25 @@ class Store extends EventEmitter
         this.emitState()
     }
 
-    async getQuestionBets(questionID, accounts) {
-        const predictionMkt = await this.contracts.PredictionMarket.deployed()
+    async getQuestionBets(questionAddr, accounts) {
+        const question = await this.contracts.Question.at(questionAddr)
 
         for (let account of accounts) {
-            const [ vote, amount, withdrawn ] = await predictionMkt.getBet(questionID, account, {from: this.state.currentAccount})
-            this.state.questionBets[questionID] = this.state.questionBets[questionID] || {}
-            this.state.questionBets[questionID][account] = { vote: vote.toNumber(), amount, withdrawn }
+            const [ bettor, vote, amount, withdrawn ] = await question.bets(account, {from: this.state.currentAccount})
+            this.state.questionBets[questionAddr] = this.state.questionBets[questionAddr] || {}
+            this.state.questionBets[questionAddr][account] = { vote: vote.toNumber(), amount, withdrawn }
         }
 
         this.emitState()
     }
 
-    async getQuestionVotes(questionID, accounts) {
-        const predictionMkt = await this.contracts.PredictionMarket.deployed()
+    async getQuestionVotes(questionAddr, accounts) {
+        const question = await this.contracts.Question.at(questionAddr)
 
         for (let account of accounts) {
-            const vote = await predictionMkt.getVote(questionID, account, {from: this.state.currentAccount})
-            this.state.questionVotes[questionID] = this.state.questionVotes[questionID] || {}
-            this.state.questionVotes[questionID][account] = vote.toNumber()
+            const vote = await question.votes(account, {from: this.state.currentAccount})
+            this.state.questionVotes[questionAddr] = this.state.questionVotes[questionAddr] || {}
+            this.state.questionVotes[questionAddr][account] = vote.toNumber()
         }
 
         this.emitState()

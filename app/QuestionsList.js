@@ -30,13 +30,13 @@ class QuestionsList extends React.Component
                         </tr>
                     </thead>
                     <tbody>
-                        {this.props.questionIDs.map(id => {
-                            const question = this.props.questions[id]
-                            const questionVote = (this.props.questionVotes[ question.id ] || {})[ this.props.currentAccount ] || 0
-                            const questionBet = (this.props.questionBets[ question.id ] || {})[ this.props.currentAccount ] || {}
+                        {this.props.questionAddresses.map(address => {
+                            const question = this.props.questions[address]
+                            const questionVote = (this.props.questionVotes[ question.address ] || {})[ this.props.currentAccount ] || 0
+                            const questionBet = (this.props.questionBets[ question.address ] || {})[ this.props.currentAccount ] || {}
                             return (
-                                <tr key={question.id}>
-                                    <td>{question.question}</td>
+                                <tr key={question.address}>
+                                    <td>{question.questionStr}</td>
                                     <td>{question.betDeadlineBlock.toString()}</td>
                                     <td>{question.voteDeadlineBlock.toString()}</td>
                                     <td>{question.yesVotes.toString()}</td>
@@ -47,8 +47,8 @@ class QuestionsList extends React.Component
                                         {this.props.blockNumber < question.betDeadlineBlock &&
                                             <div>
                                                 <input ref={x => this._inputBidAmount = x} type="text" placeholder="ETH amount" />
-                                                <button onClick={() => this.onClickBet(question.id, true)}>Bet yes</button>
-                                                <button onClick={() => this.onClickBet(question.id, false)}>Bet no</button>
+                                                <button onClick={() => this.onClickBet(question.address, true)}>Bet yes</button>
+                                                <button onClick={() => this.onClickBet(question.address, false)}>Bet no</button>
                                             </div>
                                         }
                                         {this.props.blockNumber >= question.betDeadlineBlock &&
@@ -56,8 +56,8 @@ class QuestionsList extends React.Component
                                          this.props.isTrustedSource[ this.props.currentAccount ] &&
                                          questionVote === 0 &&
                                             <div>
-                                                <button onClick={() => this.onClickVote(question.id, true)}>Vote yes</button>
-                                                <button onClick={() => this.onClickVote(question.id, false)}>Vote no</button>
+                                                <button onClick={() => this.onClickVote(question.address, true)}>Vote yes</button>
+                                                <button onClick={() => this.onClickVote(question.address, false)}>Vote no</button>
                                             </div>
                                         }
                                         {this.props.blockNumber >= question.voteDeadlineBlock &&
@@ -66,7 +66,7 @@ class QuestionsList extends React.Component
                                          (questionBet.vote === (question.yesVotes.greaterThan(question.noVotes) ? 1 : 2)
                                             || question.yesVotes.equals( question.noVotes ) ) &&
                                             <div>
-                                                <button onClick={() => this.onClickWithdraw(question.id)}>Withdraw</button>
+                                                <button onClick={() => this.onClickWithdraw(question.address)}>Withdraw</button>
                                             </div>
                                         }
                                     </td>
@@ -79,23 +79,23 @@ class QuestionsList extends React.Component
         )
     }
 
-    async onClickBet(questionID, yesOrNo) {
+    async onClickBet(questionAddr, yesOrNo) {
         const betAmount = web3.toWei(parseFloat(this._inputBidAmount.value), 'ether')
 
-        const predictionMkt = await contracts.PredictionMarket.deployed()
-        let tx = await predictionMkt.bet(questionID, yesOrNo, {from: this.props.currentAccount, value: betAmount, gas: 1e6})
+        const question = await contracts.Question.at(questionAddr)
+        let tx = await question.bet(yesOrNo, {from: this.props.currentAccount, value: betAmount, gas: 1e6})
         console.log('TX RESP ~>', tx)
     }
 
-    async onClickVote(questionID, yesOrNo) {
+    async onClickVote(questionAddr, yesOrNo) {
         const predictionMkt = await contracts.PredictionMarket.deployed()
-        let tx = await predictionMkt.vote(questionID, yesOrNo, {from: this.props.currentAccount, gas: 1e6})
+        let tx = await predictionMkt.vote(questionAddr, yesOrNo, {from: this.props.currentAccount, gas: 1e6})
         console.log('TX RESP ~>', tx)
     }
 
-    async onClickWithdraw(questionID) {
-        const predictionMkt = await contracts.PredictionMarket.deployed()
-        let tx = await predictionMkt.withdraw(questionID, {from: this.props.currentAccount, gas: 1e6})
+    async onClickWithdraw(questionAddr) {
+        const question = await contracts.Question.at(questionAddr)
+        let tx = await question.withdraw({from: this.props.currentAccount, gas: 1e6})
         console.log('withdraw TX RESP ~>', tx)
     }
 }

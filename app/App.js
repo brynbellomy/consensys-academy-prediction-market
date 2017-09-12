@@ -42,7 +42,7 @@ class App extends React.Component
                 <div className="row">
                     <div className="col-md-12">
                         <QuestionsList
-                            questionIDs={this.props.appState.questionIDs}
+                            questionAddresses={this.props.appState.questionAddresses}
                             questions={this.props.appState.questions}
                             blockNumber={this.props.appState.blockNumber}
                             currentAccount={this.props.appState.currentAccount}
