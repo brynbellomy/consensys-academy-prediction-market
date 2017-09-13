@@ -21,12 +21,12 @@ contract('PredictionMarket', accounts => {
     // helper func to reduce boilerplate
     async function addStandardQuestion() {
         let admin = accounts[0]
-        let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-        let voteDeadlineBlock = betDeadlineBlock + 5
+        let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 10
+        let voteDeadlineBlock = betDeadlineBlock + 10
         let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: admin })
         let questionAddr = addTx.logs[0].args.questionAddress
         let question = await Question.at(questionAddr)
-        return { question, betDeadlineBlock, voteDeadlineBlock, admin }
+        return { question, betDeadlineBlock, voteDeadlineBlock, admin, addTx }
     }
 
     //
@@ -226,7 +226,7 @@ contract('PredictionMarket', accounts => {
                 assert.equal(log.args.betAmount, betAmount, `log.args.betAmount`)
             })
 
-            it('should reflect the bet data in the .bets mapping of the question (via .getBet())', async () => {
+            it('should reflect the bet data in the .bets mapping of the question', async () => {
                 let betVote = true
 
                 let betTx = await question.bet(betVote, { from: accounts[1], value: 1 })
@@ -369,37 +369,22 @@ contract('PredictionMarket', accounts => {
     //
 
     describe('.withdraw()', async () => {
+        let question, betDeadlineBlock, voteDeadlineBlock, admin
+
+        beforeEach(async () => {
+            ({ question, betDeadlineBlock, voteDeadlineBlock, admin } = await addStandardQuestion())
+        })
+
         it('should not allow withdrawing before voteDeadlineBlock', async () => {
-            let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-            let voteDeadlineBlock = betDeadlineBlock + 5
-
-            let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: accounts[0] })
-            let questionAddr = addTx.logs[0].args.questionAddress
-            let question = await Question.at(questionAddr)
-
             await expectThrow( question.withdraw({ from: accounts[0] }) )
         })
 
         it(`should not allow withdrawing by users who haven't bet`, async () => {
-            let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-            let voteDeadlineBlock = betDeadlineBlock + 5
-
-            let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: accounts[0] })
-            let questionAddr = addTx.logs[0].args.questionAddress
-            let question = await Question.at(questionAddr)
-
             await waitUntilBlock(0, voteDeadlineBlock + 1)
             await expectThrow( question.withdraw({ from: accounts[0] }) )
         })
 
         it(`should not allow withdrawing by users who have already withdrawn`, async () => {
-            let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-            let voteDeadlineBlock = betDeadlineBlock + 5
-
-            let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: accounts[0] })
-            let questionAddr = addTx.logs[0].args.questionAddress
-            let question = await Question.at(questionAddr)
-
             await question.bet(true, { from: accounts[0], value: 1 })
             await waitUntilBlock(0, voteDeadlineBlock + 1)
             await question.withdraw({ from: accounts[0] })
@@ -407,45 +392,35 @@ contract('PredictionMarket', accounts => {
         })
 
         it(`should not allow withdrawing by users who bet "yes" when the "no" votes won`, async () => {
-            let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-            let voteDeadlineBlock = betDeadlineBlock + 5
             let vote = true
             let voter = accounts[1]
+            let bettor = accounts[0]
 
-            let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: accounts[0] })
-            let questionAddr = addTx.logs[0].args.questionAddress
-            let question = await Question.at(questionAddr)
+            await question.addTrustedSource(voter, { from: admin })
 
-            await question.addTrustedSource(voter, { from: accounts[0] })
-
-            await question.bet(vote, { from: accounts[0], value: 1 })
+            await question.bet(vote, { from: bettor, value: 1 })
 
             await waitUntilBlock(0, betDeadlineBlock + 1)
             await question.vote(!vote, { from: voter })
 
             await waitUntilBlock(0, voteDeadlineBlock + 1)
-            await expectThrow( question.withdraw({ from: accounts[0] }) )
+            await expectThrow( question.withdraw({ from: bettor }) )
         })
 
         it(`should not allow withdrawing by users who bet "no" when the "yes" votes won`, async () => {
-            let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-            let voteDeadlineBlock = betDeadlineBlock + 5
             let vote = false
             let voter = accounts[1]
+            let bettor = accounts[0]
 
-            let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: accounts[0] })
-            let questionAddr = addTx.logs[0].args.questionAddress
-            let question = await Question.at(questionAddr)
+            await question.addTrustedSource(voter, { from: admin })
 
-            await question.addTrustedSource(voter, { from: accounts[0] })
-
-            await question.bet(vote, { from: accounts[0], value: 1 })
+            await question.bet(vote, { from: bettor, value: 1 })
 
             await waitUntilBlock(0, betDeadlineBlock + 1)
             await question.vote(!vote, { from: voter })
 
             await waitUntilBlock(0, voteDeadlineBlock + 1)
-            await expectThrow( question.withdraw({ from: accounts[0] }) )
+            await expectThrow( question.withdraw({ from: bettor }) )
         })
 
         describe('when a user who made a bet withdraws after voteDeadlineBlock, but nobody voted', async () => {
@@ -454,17 +429,9 @@ contract('PredictionMarket', accounts => {
             let bettor = accounts[0]
             let voter = accounts[1]
             let vote = true
-            let question = null
 
             beforeEach(async () => {
-                let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-                let voteDeadlineBlock = betDeadlineBlock + 5
-
-                let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: accounts[0] })
-                let questionAddr = addTx.logs[0].args.questionAddress
-                question = await Question.at(questionAddr)
-
-                await question.addTrustedSource(voter, { from: accounts[0] })
+                await question.addTrustedSource(voter, { from: admin })
 
                 await question.bet(vote, { from: bettor, value: betAmount })
                 bettorBalanceAfterBet = web3.eth.getBalance(bettor)
@@ -491,7 +458,7 @@ contract('PredictionMarket', accounts => {
                 assert.equal(log.args.amount, betAmount, 'log.args.amount')
             })
 
-            it('should reflect the withdrawal in the question.bets mapping (via .getBet())', async () => {
+            it('should reflect the withdrawal in the question.bets mapping', async () => {
                 let [ _bettor, _vote, _betAmount, _withdrawn ] = await question.bets(accounts[0])
                 assert.isTrue(_withdrawn, 'bet.withdrawn')
             })
@@ -504,21 +471,13 @@ contract('PredictionMarket', accounts => {
             let bettor = accounts[0]
             let voter1 = accounts[1]
             let voter2 = accounts[2]
-            let question = null
 
             beforeEach(async () => {
-                let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-                let voteDeadlineBlock = betDeadlineBlock + 5
-
-                let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: accounts[0] })
-                let questionAddr = addTx.logs[0].args.questionAddress
-                question = await Question.at(questionAddr)
-
-                await question.addTrustedSource(voter1, { from: accounts[0] })
-                await question.addTrustedSource(voter2, { from: accounts[0] })
+                await question.addTrustedSource(voter1, { from: admin })
+                await question.addTrustedSource(voter2, { from: admin })
 
                 await question.bet(bet, { from: bettor, value: betAmount })
-                bettorBalanceAfterBet = web3.eth.getBalance(bettor)
+                bettorBalanceAfterBet = await web3.eth.getBalancePromise(bettor)
 
                 await waitUntilBlock(0, betDeadlineBlock + 1)
                 await question.vote(bet, { from: voter1 })
@@ -541,12 +500,12 @@ contract('PredictionMarket', accounts => {
 
                 let log = withdrawTx.logs[0]
                 assert.equal(log.event, 'LogWithdraw', 'log.event')
-                assert.equal(log.args.who, accounts[0], 'log.args.who')
+                assert.equal(log.args.who, bettor, 'log.args.who')
                 assert.equal(log.args.amount, betAmount, 'log.args.amount')
             })
 
-            it('should reflect the withdrawal in the question.bets mapping (via .getBet())', async () => {
-                let [ _bettor, _vote, _betAmount, _withdrawn ] = await question.bets(accounts[0])
+            it('should reflect the withdrawal in the question.bets mapping', async () => {
+                let [ _bettor, _vote, _betAmount, _withdrawn ] = await question.bets(bettor)
                 assert.isTrue(_withdrawn, 'bet.withdrawn')
             })
         })
@@ -561,19 +520,11 @@ contract('PredictionMarket', accounts => {
             let voter2 = accounts[4]
             let voter3 = accounts[5]
             let winningVote = true
-            let question = null
 
             beforeEach(async () => {
-                let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 10
-                let voteDeadlineBlock = betDeadlineBlock + 10
-
-                let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: accounts[0] })
-                let questionAddr = addTx.logs[0].args.questionAddress
-                question = await Question.at(questionAddr)
-
-                await question.addTrustedSource(voter1, { from: accounts[0] })
-                await question.addTrustedSource(voter2, { from: accounts[0] })
-                await question.addTrustedSource(voter3, { from: accounts[0] })
+                await question.addTrustedSource(voter1, { from: admin })
+                await question.addTrustedSource(voter2, { from: admin })
+                await question.addTrustedSource(voter3, { from: admin })
 
                 await question.bet(winningVote, { from: bettor1, value: bettor1Amount })
                 await question.bet(winningVote, { from: bettor2, value: bettor2Amount })
