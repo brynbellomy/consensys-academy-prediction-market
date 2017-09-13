@@ -32,10 +32,12 @@ contract ETHFuturesQuestion is BinaryQuestion, usingOraclize
     }
 
     function __callback(bytes32 requestId, string result) {
+        require(msg.sender == oraclize_cbAddress());
         oraclizeCallback(requestId, result);
     }
 
     function __callback(bytes32 requestId, string result, bytes proof) {
+        require(msg.sender == oraclize_cbAddress());
         oraclizeCallback(requestId, result);
     }
 

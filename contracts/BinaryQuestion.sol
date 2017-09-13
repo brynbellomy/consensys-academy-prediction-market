@@ -3,11 +3,7 @@ pragma solidity ^0.4.15;
 import './SafeMath.sol';
 import './Ownable.sol';
 import './Haltable.sol';
-
-
-contract IPredictionMarket {
-    mapping(address => bool) public isAdmin;
-}
+import './Interfaces.sol';
 
 
 contract BinaryQuestion is Haltable, Ownable
@@ -53,6 +49,7 @@ contract BinaryQuestion is Haltable, Ownable
     // of the destroyed contract's funds.
     function kill(address recipient)
         onlyAdmin
+        onlyHalted
         returns (bool ok)
     {
         selfdestruct(recipient);
@@ -75,12 +72,9 @@ contract BinaryQuestion is Haltable, Ownable
             betVote = Vote.No;
         }
 
-        bets[msg.sender] = Bet({
-            bettor: msg.sender,
-            vote: betVote,
-            amount: msg.value,
-            withdrawn: false
-        });
+        bets[msg.sender].bettor = msg.sender;
+        bets[msg.sender].vote = betVote;
+        bets[msg.sender].amount = bets[msg.sender].amount.safeAdd(msg.value);
 
         LogBet(msg.sender, betVote, msg.value);
 

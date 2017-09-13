@@ -17,6 +17,11 @@ contract Haltable {
         return true;
     }
 
+    modifier onlyHalted {
+        require(isHalted);
+        _;
+    }
+
     modifier onlyNotHalted {
         require(!isHalted);
         _;

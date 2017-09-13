@@ -1,25 +1,27 @@
 pragma solidity ^0.4.15;
 
 import './Question.sol';
+import './ETHFuturesQuestion.sol';
 import './Haltable.sol';
 import './MultiOwnable.sol';
 import './AddressSetLib.sol';
 
-contract IKillable {
-    function kill(address recipient) returns (bool ok);
-}
 
 contract PredictionMarket is MultiOwnable, Haltable
 {
+    // libs
     using AddressSetLib for AddressSetLib.AddressSet;
 
+    // state
     mapping(address => bool) public isTrustedSource;
 
     mapping(bytes32 => bool) public questionHasBeenAsked;
     AddressSetLib.AddressSet questions;
+    AddressSetLib.AddressSet ethFuturesQuestions;
 
+    // events
     event LogAddQuestion(address whoAdded, address questionAddress, string questionStr, uint betDeadlineBlock, uint voteDeadlineBlock);
-    event LogHaltSwitch(address who, bool isHalted);
+    event LogAddETHFuturesQuestion(address whoAdded, address questionAddress, uint targetUSDPrice, uint betDeadlineBlock, uint voteDeadlineBlock);
 
     function PredictionMarket() {
         isAdmin[msg.sender] = true;
@@ -40,24 +42,10 @@ contract PredictionMarket is MultiOwnable, Haltable
     // of the destroyed contract's funds.
     function kill(address recipient)
         onlyAdmin
+        onlyHalted
         returns (bool ok)
     {
         selfdestruct(recipient);
-        return true;
-    }
-
-    function killQuestion(address _questionAddr, address _recipient)
-        onlyAdmin
-        returns (bool ok)
-    {
-        require(questions.contains(_questionAddr));
-
-        IKillable question = IKillable(_questionAddr);
-        question.kill(_recipient);
-
-        // remove the question from our master list
-        questions.remove(_questionAddr);
-
         return true;
     }
 
@@ -83,6 +71,23 @@ contract PredictionMarket is MultiOwnable, Haltable
         questions.add(address(question));
 
         LogAddQuestion(msg.sender, address(question), questionStr, betDeadlineBlock, voteDeadlineBlock);
+
+        return (true, address(question));
+    }
+
+    function addETHFuturesQuestion(uint targetUSDPrice, uint betDeadlineBlock, uint voteDeadlineBlock)
+        onlyAdmin
+        onlyNotHalted
+        returns (bool ok, address questionAddr)
+    {
+        require(betDeadlineBlock > block.number);
+        require(voteDeadlineBlock > betDeadlineBlock);
+
+        // deploy the new question
+        ETHFuturesQuestion question = new ETHFuturesQuestion(targetUSDPrice, betDeadlineBlock, voteDeadlineBlock);
+        ethFuturesQuestions.add(address(question));
+
+        LogAddETHFuturesQuestion(msg.sender, address(question), targetUSDPrice, betDeadlineBlock, voteDeadlineBlock);
 
         return (true, address(question));
     }
