@@ -2,6 +2,7 @@ pragma solidity ^0.4.15;
 
 import './SafeMath.sol';
 import './BinaryQuestion.sol';
+import './Interfaces.sol';
 
 
 contract Question is BinaryQuestion
@@ -11,7 +12,7 @@ contract Question is BinaryQuestion
     string public questionStr; // normally, we would probably store this in IPFS/Swarm
     mapping(address => bool) public isTrustedSource;
 
-    event LogAddTrustedSource(address trustedSource);
+    event LogAddTrustedSource(address whoAdded, address trustedSource);
 
     function Question(string _questionStr, uint _betDeadlineBlock, uint _voteDeadlineBlock)
         BinaryQuestion(_betDeadlineBlock, _voteDeadlineBlock)
@@ -20,14 +21,14 @@ contract Question is BinaryQuestion
     }
 
     function addTrustedSource(address trustedSource)
-        onlyOwner
+        onlyAdmin
         returns (bool ok)
     {
         require(!isTrustedSource[trustedSource]);
 
         isTrustedSource[trustedSource] = true;
 
-        LogAddTrustedSource(trustedSource);
+        LogAddTrustedSource(msg.sender, trustedSource);
         return true;
     }
 

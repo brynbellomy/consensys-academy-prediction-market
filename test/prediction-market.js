@@ -18,6 +18,17 @@ contract('PredictionMarket', accounts => {
         predictionMkt = await PredictionMarket.new([ accounts[0] ], { from: accounts[0] })
     })
 
+    // helper func to reduce boilerplate
+    async function addStandardQuestion() {
+        let admin = accounts[0]
+        let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
+        let voteDeadlineBlock = betDeadlineBlock + 5
+        let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: admin })
+        let questionAddr = addTx.logs[0].args.questionAddress
+        let question = await Question.at(questionAddr)
+        return { question, betDeadlineBlock, voteDeadlineBlock, admin }
+    }
+
     //
     // .isAdmin()
     //
@@ -43,7 +54,7 @@ contract('PredictionMarket', accounts => {
             let blockNumber = await web3.eth.getBlockNumberPromise()
             let betDeadlineBlock = blockNumber + 5
             let voteDeadlineBlock = betDeadlineBlock + 5
-            await expectThrow( predictionMkt.addQuestion('Is Chewbacca a wookie?', betDeadlineBlock, voteDeadlineBlock, { from: accounts[1] }) )
+            await expectThrow( predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: accounts[1] }) )
         })
 
         it('should not allow the same question twice', async () => {
@@ -134,28 +145,30 @@ contract('PredictionMarket', accounts => {
     //
 
     describe('.addTrustedSource()', async () => {
-        let admin = accounts[0]
         let trustedSource = accounts[1]
+        let admin, question
+
+        beforeEach(async () => {
+            ({ admin, question } = await addStandardQuestion())
+        })
 
         it('should not allow the same trusted source to be added twice', async () => {
-            await predictionMkt.addTrustedSource(trustedSource, { from: admin })
-            await expectThrow( predictionMkt.addTrustedSource(trustedSource, { from: admin }) )
+            await question.addTrustedSource(trustedSource, { from: admin })
+            await expectThrow( question.addTrustedSource(trustedSource, { from: admin }) )
         })
 
         it('should not allow a non-admin to add a trusted source', async () => {
-            let notAdmin = accounts[1]
-            let trustedSource = accounts[2]
-
-            await expectThrow( predictionMkt.addTrustedSource(trustedSource, { from: notAdmin }) )
+            let notAdmin = accounts[2]
+            await expectThrow( question.addTrustedSource(trustedSource, { from: notAdmin }) )
         })
 
         describe('when an admin adds a new trusted source', async () => {
             it('should not throw', async () => {
-                await predictionMkt.addTrustedSource(trustedSource, { from: admin })
+                await question.addTrustedSource(trustedSource, { from: admin })
             })
 
             it('should emit one LogAddTrustedSource event', async () => {
-                let addTx = await predictionMkt.addTrustedSource(trustedSource, { from: admin })
+                let addTx = await question.addTrustedSource(trustedSource, { from: admin })
 
                 assert.lengthOf(addTx.logs, 1, `addTx.logs`)
 
@@ -166,9 +179,9 @@ contract('PredictionMarket', accounts => {
             })
 
             it('should reflect the trusted source in the .isTrustedSource mapping', async () => {
-                await predictionMkt.addTrustedSource(trustedSource, { from: admin })
+                await question.addTrustedSource(trustedSource, { from: admin })
 
-                let isTrustedSource = await predictionMkt.isTrustedSource(trustedSource)
+                let isTrustedSource = await question.isTrustedSource(trustedSource)
                 assert.isTrue(isTrustedSource, `.isTrustedSource(${trustedSource})`)
             })
         })
@@ -179,29 +192,17 @@ contract('PredictionMarket', accounts => {
     //
 
     describe('.bet()', async () => {
-        // it('should not allow betting on a nonexistent question', async () => {
-        //     await expectThrow( predictionMkt.bet(questionID, true, { from: accounts[1] }) )
-        // })
+        let question, betDeadlineBlock, voteDeadlineBlock
+
+        beforeEach(async () => {
+            ({ question, betDeadlineBlock, voteDeadlineBlock } = await addStandardQuestion())
+        })
 
         it('should not allow betting with no money', async () => {
-            let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-            let voteDeadlineBlock = betDeadlineBlock + 5
-
-            let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: accounts[0] })
-            let questionAddr = addTx.logs[0].args.questionAddress
-            let question = await Question.at(questionAddr)
-
             await expectThrow( question.bet(true, { from: accounts[1] }) )
         })
 
         it('should not allow betting after the deadline', async () => {
-            let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-            let voteDeadlineBlock = betDeadlineBlock + 5
-
-            let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: accounts[0] })
-            let questionAddr = addTx.logs[0].args.questionAddress
-            let question = await Question.at(questionAddr)
-
             await waitUntilBlock(0, betDeadlineBlock + 1)
             await expectThrow( question.bet(true, { from: accounts[1], value: 1 }) )
         })
@@ -211,17 +212,6 @@ contract('PredictionMarket', accounts => {
             let betAmount = 1
             let betVote = true
             let expectedVote = (betVote === true) ? 1 : 2
-            let questionAddr = null
-            let question = null
-
-            beforeEach(async () => {
-                let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-                let voteDeadlineBlock = betDeadlineBlock + 5
-
-                let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: accounts[0] })
-                questionAddr = addTx.logs[0].args.questionAddress
-                question = await Question.at(questionAddr)
-            })
 
             it('should emit one LogBet event', async () => {
                 let betVote = true
@@ -283,164 +273,92 @@ contract('PredictionMarket', accounts => {
     describe('.vote()', async () => {
         let admin = accounts[0]
         let voter = accounts[1]
+        let question, betDeadlineBlock, voteDeadlineBlock
 
-        // it('should not allow voting on a nonexistent question', async () => {
-        //     let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-
-        //     await predictionMkt.addTrustedSource(voter, { from: admin })
-        //     await waitUntilBlock(0, betDeadlineBlock + 1)
-        //     await expectThrow( predictionMkt.vote(questionID, true, { from: voter }) )
-        // })
+        beforeEach(async () => {
+            ({ question, betDeadlineBlock, voteDeadlineBlock } = await addStandardQuestion())
+        })
 
         it('should not allow voting by a user that is not a trusted source', async () => {
-            let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-            let voteDeadlineBlock = betDeadlineBlock + 5
-
-            let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: admin })
-            let questionAddr = addTx.logs[0].args.questionAddress
-
             await waitUntilBlock(0, betDeadlineBlock + 1)
-            await expectThrow( predictionMkt.vote(questionAddr, true, { from: voter }) )
+            await expectThrow( question.vote(true, { from: voter }) )
         })
 
         it('should not allow voting before betDeadlineBlock', async () => {
-            let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-            let voteDeadlineBlock = betDeadlineBlock + 5
-
-            let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: admin })
-            let questionAddr = addTx.logs[0].args.questionAddress
-
-            await predictionMkt.addTrustedSource(voter, { from: admin })
-            await expectThrow( predictionMkt.vote(questionAddr, true, { from: voter }) )
+            await question.addTrustedSource(voter, { from: admin })
+            await expectThrow( question.vote(true, { from: voter }) )
         })
 
         it('should not allow voting after voteDeadlineBlock', async () => {
-            let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-            let voteDeadlineBlock = betDeadlineBlock + 5
-
-            let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: admin })
-            let questionAddr = addTx.logs[0].args.questionAddress
-
-            await predictionMkt.addTrustedSource(voter, { from: admin })
+            await question.addTrustedSource(voter, { from: admin })
             await waitUntilBlock(0, voteDeadlineBlock + 1)
-            await expectThrow( predictionMkt.vote(questionAddr, true, { from: voter }) )
+            await expectThrow( question.vote(true, { from: voter }) )
         })
 
         it('should not allow voting by the same user twice', async () => {
-            let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-            let voteDeadlineBlock = betDeadlineBlock + 5
-
-            let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: admin })
-            let questionAddr = addTx.logs[0].args.questionAddress
-
-            await predictionMkt.addTrustedSource(voter, { from: admin })
+            await question.addTrustedSource(voter, { from: admin })
             await waitUntilBlock(0, betDeadlineBlock + 1)
-            await predictionMkt.vote(questionAddr, true, { from: voter })
-            await expectThrow( predictionMkt.vote(questionAddr, true, { from: voter }) )
+            await question.vote(true, { from: voter })
+            await expectThrow( question.vote(true, { from: voter }) )
         })
 
         describe('if a trusted source votes on a question after betDeadlineBlock and before voteDeadlineBlock', async () => {
             it('should not throw', async () => {
-                let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-                let voteDeadlineBlock = betDeadlineBlock + 5
-
-                let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: admin })
-                let questionAddr = addTx.logs[0].args.questionAddress
-
-                await predictionMkt.addTrustedSource(voter, { from: admin })
+                await question.addTrustedSource(voter, { from: admin })
                 await waitUntilBlock(0, betDeadlineBlock + 1)
-                await predictionMkt.vote(questionAddr, true, { from: voter })
+                await question.vote(true, { from: voter })
             })
 
-            // NOTE: the following test can't pass due to a truffle-contract bug that prevents logs from internal transactions from being decoded correctly
+            it('should emit one LogVote event', async () => {
+                let vote = true
+                let expectedVote = vote == true ? 1 : 2
 
-            // it('should emit one LogVote event', async () => {
-            //     let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-            //     let voteDeadlineBlock = betDeadlineBlock + 5
-            //     let vote = true
-            //     let expectedVote = vote == true ? 1 : 2
+                await question.addTrustedSource(voter, { from: admin })
+                await waitUntilBlock(0, betDeadlineBlock + 1)
+                let voteTx = await question.vote(true, { from: voter })
 
-            //     let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: admin })
-            //     let questionAddr = addTx.logs[0].args.questionAddress
+                assert.lengthOf(voteTx.logs, 1, `voteTx.logs`)
 
-            //     await predictionMkt.addTrustedSource(voter, { from: admin })
-            //     await waitUntilBlock(0, betDeadlineBlock + 1)
-            //     let voteTx = await predictionMkt.vote(questionAddr, true, { from: voter })
-
-            //     assert.lengthOf(voteTx.receipt.logs, 1, `voteTx.logs`)
-
-            //     let log = voteTx.receipt.logs[0]
-            //     assert.equal(log.event, 'LogVote', `log.event`)
-            //     assert.equal(log.args.trustedSource, voter, `log.args.trustedSource`)
-            //     assert.equal(log.args.vote, expectedVote, `log.args.vote`)
-            // })
+                let log = voteTx.logs[0]
+                assert.equal(log.event, 'LogVote', `log.event`)
+                assert.equal(log.args.trustedSource, voter, `log.args.trustedSource`)
+                assert.equal(log.args.vote, expectedVote, `log.args.vote`)
+            })
 
             it('should increment question.yesVotes if the vote is a yes', async () => {
-                let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-                let voteDeadlineBlock = betDeadlineBlock + 5
-                let vote = true
-
-                let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: admin })
-                let questionAddr = addTx.logs[0].args.questionAddress
-
-                await predictionMkt.addTrustedSource(voter, { from: admin })
+                await question.addTrustedSource(voter, { from: admin })
                 await waitUntilBlock(0, betDeadlineBlock + 1)
-                await predictionMkt.vote(questionAddr, vote, { from: voter })
+                await question.vote(true, { from: voter })
 
-                let question = await Question.at(questionAddr)
                 let [ _questionStr, _betDeadlineBlock, _voteDeadlineBlock, _yesVotes, _noVotes, _yesFunds, _noFunds ] = await question.getMetadata()
                 assert.equal(_yesVotes, 1, 'question.yesVotes')
             })
 
             it('should increment question.noVotes if the vote is a no', async () => {
-                let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-                let voteDeadlineBlock = betDeadlineBlock + 5
-                let vote = false
-
-                let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: admin })
-                let questionAddr = addTx.logs[0].args.questionAddress
-                let question = await Question.at(questionAddr)
-
-                await predictionMkt.addTrustedSource(voter, { from: admin })
+                await question.addTrustedSource(voter, { from: admin })
                 await waitUntilBlock(0, betDeadlineBlock + 1)
-                await predictionMkt.vote(questionAddr, vote, { from: voter })
+                await question.vote(false, { from: voter })
 
                 let [ _question, _betDeadlineBlock, _voteDeadlineBlock, _yesVotes, _noVotes, _yesFunds, _noFunds ] = await question.getMetadata()
                 assert.equal(_noVotes, 1, 'question.noVotes')
             })
 
             it('should reflect a yes vote in questions.votes[...]', async () => {
-                let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-                let voteDeadlineBlock = betDeadlineBlock + 5
-                let vote = true
-
-                let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: admin })
-                let questionAddr = addTx.logs[0].args.questionAddress
-                let question = await Question.at(questionAddr)
-
-                await predictionMkt.addTrustedSource(voter, { from: admin })
+                await question.addTrustedSource(voter, { from: admin })
                 await waitUntilBlock(0, betDeadlineBlock + 1)
-                await predictionMkt.vote(questionAddr, vote, { from: voter })
+                await question.vote(true, { from: voter })
 
                 let _vote = await question.votes(voter)
                 assert.equal(_vote, 1, 'question.votes[...]')
             })
 
             it('should reflect a no vote in questions.votes[...]', async () => {
-                let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
-                let voteDeadlineBlock = betDeadlineBlock + 5
-                let vote = true
-
-                let addTx = await predictionMkt.addQuestion(questionStr, betDeadlineBlock, voteDeadlineBlock, { from: admin })
-                let questionAddr = addTx.logs[0].args.questionAddress
-                let question = await Question.at(questionAddr)
-
-                await predictionMkt.addTrustedSource(voter, { from: admin })
+                await question.addTrustedSource(voter, { from: admin })
                 await waitUntilBlock(0, betDeadlineBlock + 1)
-                await predictionMkt.vote(questionAddr, vote, { from: voter })
+                await question.vote(false, { from: voter })
 
                 let _vote = await question.votes(voter)
-                assert.equal(_vote, 1, 'question.votes[...]')
+                assert.equal(_vote, 2, 'question.votes[...]')
             })
         })
 
@@ -451,10 +369,6 @@ contract('PredictionMarket', accounts => {
     //
 
     describe('.withdraw()', async () => {
-        // it('should not allow withdrawing from a nonexistent question', async () => {
-        //     await expectThrow( predictionMkt.withdraw(questionID, { from: accounts[0] }) )
-        // })
-
         it('should not allow withdrawing before voteDeadlineBlock', async () => {
             let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
             let voteDeadlineBlock = betDeadlineBlock + 5
@@ -502,12 +416,12 @@ contract('PredictionMarket', accounts => {
             let questionAddr = addTx.logs[0].args.questionAddress
             let question = await Question.at(questionAddr)
 
-            await predictionMkt.addTrustedSource(voter, { from: accounts[0] })
+            await question.addTrustedSource(voter, { from: accounts[0] })
 
             await question.bet(vote, { from: accounts[0], value: 1 })
 
             await waitUntilBlock(0, betDeadlineBlock + 1)
-            await predictionMkt.vote(questionAddr, !vote, { from: voter })
+            await question.vote(!vote, { from: voter })
 
             await waitUntilBlock(0, voteDeadlineBlock + 1)
             await expectThrow( question.withdraw({ from: accounts[0] }) )
@@ -523,12 +437,12 @@ contract('PredictionMarket', accounts => {
             let questionAddr = addTx.logs[0].args.questionAddress
             let question = await Question.at(questionAddr)
 
-            await predictionMkt.addTrustedSource(voter, { from: accounts[0] })
+            await question.addTrustedSource(voter, { from: accounts[0] })
 
             await question.bet(vote, { from: accounts[0], value: 1 })
 
             await waitUntilBlock(0, betDeadlineBlock + 1)
-            await predictionMkt.vote(questionAddr, !vote, { from: voter })
+            await question.vote(!vote, { from: voter })
 
             await waitUntilBlock(0, voteDeadlineBlock + 1)
             await expectThrow( question.withdraw({ from: accounts[0] }) )
@@ -550,7 +464,7 @@ contract('PredictionMarket', accounts => {
                 let questionAddr = addTx.logs[0].args.questionAddress
                 question = await Question.at(questionAddr)
 
-                await predictionMkt.addTrustedSource(voter, { from: accounts[0] })
+                await question.addTrustedSource(voter, { from: accounts[0] })
 
                 await question.bet(vote, { from: bettor, value: betAmount })
                 bettorBalanceAfterBet = web3.eth.getBalance(bettor)
@@ -600,15 +514,15 @@ contract('PredictionMarket', accounts => {
                 let questionAddr = addTx.logs[0].args.questionAddress
                 question = await Question.at(questionAddr)
 
-                await predictionMkt.addTrustedSource(voter1, { from: accounts[0] })
-                await predictionMkt.addTrustedSource(voter2, { from: accounts[0] })
+                await question.addTrustedSource(voter1, { from: accounts[0] })
+                await question.addTrustedSource(voter2, { from: accounts[0] })
 
                 await question.bet(bet, { from: bettor, value: betAmount })
                 bettorBalanceAfterBet = web3.eth.getBalance(bettor)
 
                 await waitUntilBlock(0, betDeadlineBlock + 1)
-                await predictionMkt.vote(questionAddr, bet, { from: voter1 })
-                await predictionMkt.vote(questionAddr, !bet, { from: voter2 })
+                await question.vote(bet, { from: voter1 })
+                await question.vote(!bet, { from: voter2 })
 
                 await waitUntilBlock(0, voteDeadlineBlock + 1)
                 withdrawTx = await question.withdraw({ from: bettor })
@@ -657,9 +571,9 @@ contract('PredictionMarket', accounts => {
                 let questionAddr = addTx.logs[0].args.questionAddress
                 question = await Question.at(questionAddr)
 
-                await predictionMkt.addTrustedSource(voter1, { from: accounts[0] })
-                await predictionMkt.addTrustedSource(voter2, { from: accounts[0] })
-                await predictionMkt.addTrustedSource(voter3, { from: accounts[0] })
+                await question.addTrustedSource(voter1, { from: accounts[0] })
+                await question.addTrustedSource(voter2, { from: accounts[0] })
+                await question.addTrustedSource(voter3, { from: accounts[0] })
 
                 await question.bet(winningVote, { from: bettor1, value: bettor1Amount })
                 await question.bet(winningVote, { from: bettor2, value: bettor2Amount })
@@ -667,9 +581,9 @@ contract('PredictionMarket', accounts => {
                 bettor1BalanceAfterBet = web3.eth.getBalance(bettor1)
 
                 await waitUntilBlock(0, betDeadlineBlock + 1)
-                await predictionMkt.vote(questionAddr, winningVote, { from: voter1 })
-                await predictionMkt.vote(questionAddr, winningVote, { from: voter2 })
-                await predictionMkt.vote(questionAddr, !winningVote, { from: voter3 })
+                await question.vote(winningVote, { from: voter1 })
+                await question.vote(winningVote, { from: voter2 })
+                await question.vote(!winningVote, { from: voter3 })
 
                 await waitUntilBlock(0, voteDeadlineBlock + 1)
                 withdrawTx = await question.withdraw({ from: bettor1 })
