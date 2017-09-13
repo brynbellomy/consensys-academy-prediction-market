@@ -5,6 +5,8 @@ contract Haltable {
 
     event LogHaltSwitch(address who, bool halted);
 
+    // this is prefixed with an underscore so that contracts overriding it (to add extra access
+    // modifiers, etc.) don't run into TypeErrors if they need to change the function signature.
     function _haltSwitch(address _who, bool _isHalted)
         internal
         returns (bool ok)

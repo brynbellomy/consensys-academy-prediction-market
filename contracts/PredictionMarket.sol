@@ -3,23 +3,31 @@ pragma solidity ^0.4.15;
 import './Question.sol';
 import './Haltable.sol';
 import './MultiOwnable.sol';
+import './AddressSetLib.sol';
 
+contract IKillable {
+    function kill(address recipient) returns (bool ok);
+}
 
 contract PredictionMarket is MultiOwnable, Haltable
 {
+    using AddressSetLib for AddressSetLib.AddressSet;
+
     mapping(address => bool) public isTrustedSource;
 
     mapping(bytes32 => bool) public questionHasBeenAsked;
-    mapping(address => bool) questionAddrExists;
-    address[] public questions;
+    AddressSetLib.AddressSet questions;
 
-    event LogAddTrustedSource(address whoAdded, address trustedSource);
     event LogAddQuestion(address whoAdded, address questionAddress, string questionStr, uint betDeadlineBlock, uint voteDeadlineBlock);
     event LogHaltSwitch(address who, bool isHalted);
 
     function PredictionMarket() {
         isAdmin[msg.sender] = true;
     }
+
+    //
+    // administrative functions
+    //
 
     function haltSwitch(bool _isHalted)
         onlyAdmin
@@ -28,25 +36,34 @@ contract PredictionMarket is MultiOwnable, Haltable
         return _haltSwitch(msg.sender, _isHalted);
     }
 
-    function questionHaltSwitch(address _questionAddr, bool _isHalted)
+    // due to our multi-admin setup, it's probably useful to be able to specify the recipient
+    // of the destroyed contract's funds.
+    function kill(address recipient)
         onlyAdmin
         returns (bool ok)
     {
-        Question question = Question(_questionAddr);
-        return question.haltSwitch(msg.sender, _isHalted);
-    }
-
-    function addTrustedSource(address trustedSource)
-        onlyAdmin
-        returns (bool ok)
-    {
-        require(isTrustedSource[trustedSource] == false);
-
-        isTrustedSource[trustedSource] = true;
-
-        LogAddTrustedSource(msg.sender, trustedSource);
+        selfdestruct(recipient);
         return true;
     }
+
+    function killQuestion(address _questionAddr, address _recipient)
+        onlyAdmin
+        returns (bool ok)
+    {
+        require(questions.contains(_questionAddr));
+
+        IKillable question = IKillable(_questionAddr);
+        question.kill(_recipient);
+
+        // remove the question from our master list
+        questions.remove(_questionAddr);
+
+        return true;
+    }
+
+    //
+    // business logic
+    //
 
     function addQuestion(string questionStr, uint betDeadlineBlock, uint voteDeadlineBlock)
         onlyAdmin
@@ -63,26 +80,12 @@ contract PredictionMarket is MultiOwnable, Haltable
 
         // deploy the new question
         Question question = new Question(questionStr, betDeadlineBlock, voteDeadlineBlock);
-        questionAddrExists[address(question)] = true;
-        questions.push(address(question));
+        questions.add(address(question));
 
         LogAddQuestion(msg.sender, address(question), questionStr, betDeadlineBlock, voteDeadlineBlock);
 
         return (true, address(question));
     }
-
-    // we don't check isHalted here because the Question contracts are independently haltable and
-    // this method only passes through PredictionMarket so that we can do access checking
-    function vote(address questionAddr, bool yesOrNo)
-        onlyTrustedSource
-        returns (bool ok)
-    {
-        require(questionAddrExists[questionAddr]);
-
-        Question question = Question(questionAddr);
-        return question.vote(msg.sender, yesOrNo);
-    }
-
 
     //
     // getters for the frontend
@@ -92,23 +95,21 @@ contract PredictionMarket is MultiOwnable, Haltable
         constant
         returns (uint)
     {
-        return questions.length;
+        return questions.size();
+    }
+
+    function getQuestionIndex(uint i)
+        constant
+        returns (address)
+    {
+        return questions.get(i);
     }
 
     function getAllQuestionAddresses()
         constant
         returns (address[])
     {
-        return questions;
-    }
-
-    //
-    // modifiers
-    //
-
-    modifier onlyTrustedSource {
-        require(isTrustedSource[msg.sender]);
-        _;
+        return questions.values;
     }
 }
 

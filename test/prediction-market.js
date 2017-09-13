@@ -113,7 +113,7 @@ contract('PredictionMarket', accounts => {
                 assert.equal(_noFunds, 0, `questionsByID[...].noFunds`)
             })
 
-            it('should add the question address to the .questions array', async () => {
+            it('should add the question address to the .questions set', async () => {
                 let betDeadlineBlock = (await web3.eth.getBlockNumberPromise()) + 5
                 let voteDeadlineBlock = betDeadlineBlock + 5
 
@@ -123,8 +123,8 @@ contract('PredictionMarket', accounts => {
                 let numQuestions = await predictionMkt.numQuestions()
                 assert.equal(numQuestions, 1, '.numQuestions()')
 
-                let _questionAddr = await predictionMkt.questions(0)
-                assert.equal(_questionAddr, questionAddr, '.questions(0)')
+                let _questionAddr = await predictionMkt.getQuestionIndex(0)
+                assert.equal(_questionAddr, questionAddr, '.getQuestionIndex(0)')
             })
         })
     })
