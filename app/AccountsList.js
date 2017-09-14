@@ -28,8 +28,8 @@ class AccountsList extends React.Component
                                 {account}
                                 &nbsp;
                                 {this.props.isAdmin[account] === true ? '(admin)' : null}
-                                &nbsp;
-                                {this.props.isTrustedSource[account] === true ? '(trusted source)' : null}
+                                {/*&nbsp;
+                                {this.props.isTrustedSource[account] === true ? '(trusted source)' : null}*/}
                             </li>
                         )
                     })}

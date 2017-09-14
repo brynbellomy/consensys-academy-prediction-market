@@ -51,10 +51,10 @@ class Store extends EventEmitter
         await this.getAccounts()
         await this.setCurrentAccount(this.state.accounts[0])
         await this.getIsAdmin(this.state.accounts)
-        await this.getIsTrustedSource(this.state.accounts)
         await this.getETHBalances(this.state.accounts)
 
         await this.getQuestions()
+        await this.getIsTrustedSource(this.state.questionAddresses, this.state.accounts)
         for (let addr of this.state.questionAddresses) {
             await this.getQuestionBets(addr, this.state.accounts)
             await this.getQuestionVotes(addr, this.state.accounts)
@@ -65,15 +65,6 @@ class Store extends EventEmitter
         setInterval(store.getBlockNumber, 1000)
 
         const predictionMkt = await this.contracts.PredictionMarket.deployed()
-
-        // event LogAddTrustedSource(address whoAdded, address trustedSource);
-        predictionMkt.LogAddTrustedSource(null, { fromBlock: currentBlock, toBlock: 'latest' }).watch((err, log) => {
-            console.log('==== LogAddTrustedSource')
-            const { whoAdded, trustedSource } = log.args
-            this.state.isTrustedSource[trustedSource] = true
-            this.getETHBalances([ whoAdded ])
-            this.emitState()
-        })
 
         // event LogAddAdmin(address whoAdded, address newAdmin);
         predictionMkt.LogAddAdmin(null, { fromBlock: currentBlock, toBlock: 'latest' }).watch((err, log) => {
@@ -143,6 +134,16 @@ class Store extends EventEmitter
             this.emitState()
         })
 
+        // event LogAddTrustedSource(address whoAdded, address trustedSource);
+        questionContract.LogAddTrustedSource(null, { fromBlock: 0, toBlock: 'latest' }).watch((err, log) => {
+            console.log('==== LogAddTrustedSource')
+            const { whoAdded, trustedSource } = log.args
+            this.state.isTrustedSource[questionAddr] = this.state.isTrustedSource[questionAddr] || {}
+            this.state.isTrustedSource[questionAddr][trustedSource] = true
+            this.getETHBalances([ whoAdded ])
+            this.emitState()
+        })
+
         this.questionWatchers[questionAddr] = true
     }
 
@@ -206,14 +207,20 @@ class Store extends EventEmitter
         this.emitState()
     }
 
-    async getIsTrustedSource(accounts) {
+    async getIsTrustedSource(questions, accounts) {
         const predictionMkt = await this.contracts.PredictionMarket.deployed()
 
-        const results = await Promise.all( accounts.map(acct => predictionMkt.isTrustedSource(acct)) )
-        _.zip(accounts, results).forEach(tpl => {
-            const [ acct, is ] = tpl
-            this.state.isTrustedSource[acct] = is
-        })
+        for (let questionAddr of questions) {
+            this.state.isTrustedSource[questionAddr] = this.state.isTrustedSource[questionAddr] || {}
+
+            const question = await this.contracts.Question.at(questionAddr)
+
+            const results = await Promise.all( accounts.map(acct => question.isTrustedSource(acct)) )
+            _.zip(accounts, results).forEach(tpl => {
+                const [ acct, is ] = tpl
+                this.state.isTrustedSource[questionAddr][acct] = is
+            })
+        }
 
         this.emitState()
     }

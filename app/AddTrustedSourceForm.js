@@ -1,6 +1,8 @@
 
+import * as _ from 'lodash'
 import * as React from 'react'
 import * as contracts from './contracts'
+import classnames from 'classnames'
 
 class AddTrustedSourceForm extends React.Component
 {
@@ -13,8 +15,8 @@ class AddTrustedSourceForm extends React.Component
 
     render() {
         return (
-            <div className="add-trusted-source-form">
-                <h3>Add trusted source</h3>
+            <div className={classnames('add-trusted-source-form', this.props.className)}>
+                <h4>Add trusted source</h4>
 
                 <form>
                     <div className="form-group">
@@ -29,9 +31,8 @@ class AddTrustedSourceForm extends React.Component
     }
 
     async onClickSubmit() {
-        let addr = this._inputAddr.value
-        let predictionMkt = await contracts.PredictionMarket.deployed()
-        let tx = await predictionMkt.addTrustedSource(addr, {from: this.props.currentAccount, gas: 1e6})
+        let question = await contracts.Question.at(this.props.questionAddress)
+        let tx = await question.addTrustedSource(this._inputAddr.value, {from: this.props.currentAccount, gas: 1e6})
         console.log('TX RESP ~>', tx)
     }
 }

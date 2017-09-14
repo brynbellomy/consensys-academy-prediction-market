@@ -3,8 +3,8 @@ import * as contracts from './contracts'
 import AccountsList from './AccountsList'
 import QuestionsList from './QuestionsList'
 import QuestionsForm from './QuestionsForm'
-import AddTrustedSourceForm from './AddTrustedSourceForm'
 
+require('./App.css')
 
 class App extends React.Component
 {
@@ -47,6 +47,7 @@ class App extends React.Component
                             blockNumber={this.props.appState.blockNumber}
                             currentAccount={this.props.appState.currentAccount}
                             isTrustedSource={this.props.appState.isTrustedSource}
+                            isAdmin={this.props.appState.isAdmin}
                             questionVotes={this.props.appState.questionVotes}
                             questionBets={this.props.appState.questionBets}
                         />
@@ -57,12 +58,6 @@ class App extends React.Component
                     <div className="col-md-6">
                         {this.props.appState.isAdmin[ this.props.appState.currentAccount ] &&
                             <QuestionsForm currentAccount={this.props.appState.currentAccount} />
-                        }
-                    </div>
-
-                    <div className="col-md-6">
-                        {this.props.appState.isAdmin[ this.props.appState.currentAccount ] &&
-                            <AddTrustedSourceForm currentAccount={this.props.appState.currentAccount}  />
                         }
                     </div>
                 </div>

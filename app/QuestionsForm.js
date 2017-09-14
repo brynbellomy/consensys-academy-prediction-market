@@ -48,7 +48,7 @@ class QuestionsForm extends React.Component
         const question = this._inputQuestion.value
         const betDeadlineBlock = parseInt(this._inputBetDeadlineBlock.value, 10)
         const voteDeadlineBlock = parseInt(this._inputVoteDeadlineBlock.value, 10)
-        let tx = await predictionMkt.addQuestion(question, betDeadlineBlock, voteDeadlineBlock, {from: this.props.currentAccount, gas: 1e6})
+        let tx = await predictionMkt.addQuestion(question, betDeadlineBlock, voteDeadlineBlock, {from: this.props.currentAccount, gas: 2e6})
         console.log('TX RESP ~>', tx)
 
         // refresh trusted source list
